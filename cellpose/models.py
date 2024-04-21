@@ -362,6 +362,8 @@ class CellposeModel():
             
         """
         if isinstance(x, list) or x.squeeze().ndim == 5:
+            # print("SHAPE OF X: -----------------")
+            # print(x.shape)
             masks, styles, flows = [], [], []
             tqdm_out = utils.TqdmToLogger(models_logger, level=logging.INFO)
             nimg = len(x)

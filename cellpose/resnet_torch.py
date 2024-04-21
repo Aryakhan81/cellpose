@@ -14,6 +14,8 @@ from . import transforms, io, dynamics, utils
 
 
 def batchconv(in_channels, out_channels, sz, conv_3D=False):
+    #print(f"batchconv input channels: {in_channels}")
+    #print(f"batchconv output channels: {out_channels}")
     conv_layer = nn.Conv3d if conv_3D else nn.Conv2d
     batch_norm = nn.BatchNorm3d if conv_3D else nn.BatchNorm2d
     return nn.Sequential(
@@ -24,6 +26,8 @@ def batchconv(in_channels, out_channels, sz, conv_3D=False):
 
 
 def batchconv0(in_channels, out_channels, sz, conv_3D=False):
+    #print(f"batchconv0 input channels: {in_channels}")
+    #print(f"batchconv0 output channels: {out_channels}")
     conv_layer = nn.Conv3d if conv_3D else nn.Conv2d
     batch_norm = nn.BatchNorm3d if conv_3D else nn.BatchNorm2d
     return nn.Sequential(
@@ -32,31 +36,33 @@ def batchconv0(in_channels, out_channels, sz, conv_3D=False):
     )
 
 
+# Downsampling component
 class resdown(nn.Module):
 
     def __init__(self, in_channels, out_channels, sz, conv_3D=False):
         super().__init__()
         self.conv = nn.Sequential()
-        self.proj = batchconv0(in_channels, out_channels, 1, conv_3D)
+        self.proj = batchconv0(in_channels, out_channels, 1, conv_3D)  # use batchnorm0 as "proj"
         for t in range(4):
-            if t == 0:
+            if t == 0:  # first layer
                 self.conv.add_module("conv_%d" % t,
                                      batchconv(in_channels, out_channels, sz, conv_3D))
-            else:
+            else:  # every other layer
                 self.conv.add_module("conv_%d" % t,
                                      batchconv(out_channels, out_channels, sz, conv_3D))
 
-    def forward(self, x):
+    def forward(self, x):  # forward pass
         x = self.proj(x) + self.conv[1](self.conv[0](x))
         x = x + self.conv[3](self.conv[2](x))
         return x
 
 
-class downsample(nn.Module):
+class downsample(nn.Module):  # class comibining many downsample units
 
     def __init__(self, nbase, sz, conv_3D=False, max_pool=True):
         super().__init__()
         self.down = nn.Sequential()
+        print(f"nbase: {nbase}")
         if max_pool:
             self.maxpool = nn.MaxPool3d(2, stride=2) if conv_3D else nn.MaxPool2d(
                 2, stride=2)
@@ -78,18 +84,22 @@ class downsample(nn.Module):
         return xd
 
 
-class batchconvstyle(nn.Module):
+class batchconvstyle(nn.Module):  # for upsampling include style channels
 
     def __init__(self, in_channels, out_channels, style_channels, sz, conv_3D=False):
         super().__init__()
         self.concatenation = False
+        # get batchconv just like downsampling
         self.conv = batchconv(in_channels, out_channels, sz, conv_3D)
+        # add a linear layer with the "styles"
         self.full = nn.Linear(style_channels, out_channels)
 
     def forward(self, style, x, mkldnn=False, y=None):
+        #print(f"style: {style.shape}")
         if y is not None:
             x = x + y
         feat = self.full(style)
+        #print(f"feat: {feat.shape}")
         for k in range(len(x.shape[2:])):
             feat = feat.unsqueeze(-1)
         if mkldnn:
@@ -226,6 +236,7 @@ class CPnet(nn.Module):
         self.conv_3D = conv_3D
         self.mkldnn = mkldnn if mkldnn is not None else False
         self.downsample = downsample(nbase, sz, conv_3D=conv_3D, max_pool=max_pool)
+        self.downsample_1 = downsample(nbase, sz, conv_3D=conv_3D, max_pool=max_pool)
         nbaseup = nbase[1:]
         nbaseup.append(nbaseup[-1])
         self.upsample = upsample(nbaseup, sz, conv_3D=conv_3D)
@@ -247,6 +258,8 @@ class CPnet(nn.Module):
         return next(self.parameters()).device
 
     def forward(self, data):
+        # data dim: Z x channels x X x Y
+        # T0 dim: 2D list with X and Y kernel
         """
         Forward pass of the CPnet model.
 
@@ -258,7 +271,13 @@ class CPnet(nn.Module):
         """
         if self.mkldnn:
             data = data.to_mkldnn()
-        T0 = self.downsample(data)
+        T0 = self.downsample(data)  # results of the downsample: contains a list of tensors, as the result of each layer
+        #np.savetxt('/Users/aryagharib/Desktop/erf1.txt', T0[0][0])
+        #np.savetxt('/Users/aryagharib/Desktop/erf2.txt', T0[0][1])
+
+        # print(data.shape)
+        print(f"T0 len: {len(T0)}")
+        print(f"T0[-1] shape: {T0[-1].shape}")
         if self.mkldnn:
             style = self.make_style(T0[-1].to_dense())
         else:
