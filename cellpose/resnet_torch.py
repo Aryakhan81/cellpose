@@ -246,6 +246,9 @@ class CPnet(nn.Module):
                                       requires_grad=False)
         self.diam_labels = nn.Parameter(data=torch.ones(1) * diam_mean,
                                         requires_grad=False)
+        
+        # define boolean to switch off writing to a file to test differences in T0
+        # self.should_write = False
 
     @property
     def device(self):
@@ -258,6 +261,8 @@ class CPnet(nn.Module):
         return next(self.parameters()).device
 
     def forward(self, data):
+
+
         # data dim: Z x channels x X x Y
         # T0 dim: 2D list with X and Y kernel
         """
@@ -272,8 +277,8 @@ class CPnet(nn.Module):
         if self.mkldnn:
             data = data.to_mkldnn()
         T0 = self.downsample(data)  # results of the downsample: contains a list of tensors, as the result of each layer
-        #np.savetxt('/Users/aryagharib/Desktop/erf1.txt', T0[0][0])
-        #np.savetxt('/Users/aryagharib/Desktop/erf2.txt', T0[0][1])
+        np.savetxt('/Users/aryagharib/Desktop/erf1.txt', T0[0][0][0])
+        #np.savetxt('/Users/aryagharib/Desktop/erf2.txt', T0[0])
 
         # print(data.shape)
         print(f"T0 len: {len(T0)}")
@@ -324,3 +329,7 @@ class CPnet(nn.Module):
             self.load_state_dict(
                 dict([(name, param) for name, param in state_dict.items()]),
                 strict=False)
+
+# if __name__ == '__main__':
+#     data = 
+#     forward(data)
