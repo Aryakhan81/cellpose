@@ -52,8 +52,13 @@ class resdown(nn.Module):
                                      batchconv(out_channels, out_channels, sz, conv_3D))
 
     def forward(self, x):  # forward pass
+        # x = self.proj(x) --> just for trolls -- and it works!
+        # print("before:")
+        # print(x.shape)
         x = self.proj(x) + self.conv[1](self.conv[0](x))
         x = x + self.conv[3](self.conv[2](x))
+        # print("after:")
+        # print(x.shape)
         return x
 
 
@@ -62,7 +67,7 @@ class downsample(nn.Module):  # class comibining many downsample units
     def __init__(self, nbase, sz, conv_3D=False, max_pool=True):
         super().__init__()
         self.down = nn.Sequential()
-        print(f"nbase: {nbase}")
+        #print(f"nbase: {nbase}")
         if max_pool:
             self.maxpool = nn.MaxPool3d(2, stride=2) if conv_3D else nn.MaxPool2d(
                 2, stride=2)
@@ -75,12 +80,17 @@ class downsample(nn.Module):  # class comibining many downsample units
 
     def forward(self, x):
         xd = []
+        # print("length of slef.down")
+        # print(len(self.down))
         for n in range(len(self.down)):
             if n > 0:
                 y = self.maxpool(xd[n - 1])
             else:
                 y = x
             xd.append(self.down[n](y))
+        
+        # print("len xd:")
+        # print(len(xd))
         return xd
 
 
@@ -219,7 +229,7 @@ class CPnet(nn.Module):
         self.conv_3D = conv_3D
         self.mkldnn = mkldnn if mkldnn is not None else False
         self.downsample = downsample(nbase, sz, conv_3D=conv_3D, max_pool=max_pool)
-        self.downsample_1 = downsample(nbase, sz, conv_3D=conv_3D, max_pool=max_pool)
+        #self.downsample_1 = downsample(nbase, sz, conv_3D=conv_3D, max_pool=max_pool)
         nbaseup = nbase[1:]
         nbaseup.append(nbaseup[-1])
         self.upsample = upsample(nbaseup, sz, conv_3D=conv_3D)
@@ -231,7 +241,7 @@ class CPnet(nn.Module):
                                         requires_grad=False)
         
         # define boolean to switch off writing to a file to test differences in T0
-        # self.should_write = False
+        self.should_write = True
 
     @property
     def device(self):
@@ -260,12 +270,7 @@ class CPnet(nn.Module):
         if self.mkldnn:
             data = data.to_mkldnn()
         T0 = self.downsample(data)  # results of the downsample: contains a list of tensors, as the result of each layer
-        np.savetxt('/Users/aryagharib/Desktop/erf1.txt', T0[0][0][0])
-        #np.savetxt('/Users/aryagharib/Desktop/erf2.txt', T0[0])
 
-        # print(data.shape)
-        print(f"T0 len: {len(T0)}")
-        print(f"T0[-1] shape: {T0[-1].shape}")
         if self.mkldnn:
             style = self.make_style(T0[-1].to_dense())
         else:
@@ -278,6 +283,30 @@ class CPnet(nn.Module):
         if self.mkldnn:
             T0 = [t0.to_dense() for t0 in T0]
             T1 = T1.to_dense()
+
+        if self.should_write:
+            #print(data.shape)
+            print(f"T0 len: {len(T0)}")
+            print(f"T0[-1] shape: {T0[-1].shape}")
+
+            # T0_to_write = T0[0][0][2].detach()
+            # data_to_write = data[0][1]
+            # print(T0_to_write)
+            self.should_write = False
+            # np.savetxt('/Users/aryagharib/Desktop/T0_img1', T0_to_write)
+            # #np.savetxt('/Users/aryagharib/Desktop/erf2.txt', T0[0])
+
+            #print(T0[0][0][0])
+            # torch.save(T0[0], "/Users/aryagharib/Desktop/T0_0_img3.pt")
+            # torch.save(T0[1], "/Users/aryagharib/Desktop/T0_1_img3.pt")
+            # torch.save(T0[2], "/Users/aryagharib/Desktop/T0_2_img3.pt")
+            # torch.save(T0[3], "/Users/aryagharib/Desktop/T0_3_img3.pt")
+
+            # torch.save(T1[0], "/Users/aryagharib/Desktop/T1_0_img3.pt")
+            # torch.save(T1[1], "/Users/aryagharib/Desktop/T1_1_img3.pt")
+            # torch.save(T1[2], "/Users/aryagharib/Desktop/T1_2_img3.pt")
+            # torch.save(T1[3], "/Users/aryagharib/Desktop/T1_3_img3.pt")
+
         return T1, style0, T0
 
     def save_model(self, filename):
