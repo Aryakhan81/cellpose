@@ -54,7 +54,9 @@ class resdown(nn.Module):
     def forward(self, x):  # forward pass
         # x = self.proj(x) --> just for trolls -- and it works!
         # print("before:")
-        # print(x.shape)
+
+        print("shape of x coming in to resdown forward pass: " + str(x.shape))
+
         x = self.proj(x) + self.conv[1](self.conv[0](x))
         x = x + self.conv[3](self.conv[2](x))
         # print("after:")
@@ -78,19 +80,48 @@ class downsample(nn.Module):  # class comibining many downsample units
             self.down.add_module("res_down_%d" % n,
                                  resdown(nbase[n], nbase[n + 1], sz, conv_3D))
 
+    # def forward(self, x):
+    #     print("I MADE IT HERE WITH " + str(x.shape) + " INPUT SIZE")
+    #     xd = []
+
+    #     # print("length of slef.down")
+    #     # print(len(self.down))
+    #     # print(f"SHAPE OF x: {x.shape}")
+    #     # for i in range(x.shape[1] - 1):
+    #     #     x[0][i][0] += x[1][i + 1][0]
+    #     #     x[0][i][0] /= 2
+    #     #     x[0][i][1] += x[1][i + 1][1]
+    #     #     x[0][i][1] /= 2
+    #     # #     x[i][0] = max(x[i][0], x[i + 1][0])
+    #     # #     x[i][1] = max(x[i][1], x[i + 1][1])
+    #     # x = x[0]
+    #     for n in range(len(self.down)):
+    #         if n > 0:
+    #             y = self.maxpool(xd[n - 1])
+    #         else:
+    #             y = x
+    #         xd.append(self.down[n](y))
+        
+    #     # print("len xd:")
+    #     # print(len(xd))
+    #     return xd
+    
+    # new forward function to deal with the 5D tensor input
     def forward(self, x):
+        print(f"SHAPE OF x to downsample forward pass: {x.shape}")
+        x0 = x[0]
+        x1 = x[1]
         xd = []
-        # print("length of slef.down")
-        # print(len(self.down))
+
         for n in range(len(self.down)):
             if n > 0:
-                y = self.maxpool(xd[n - 1])
+                y0 = self.maxpool(xd[n - 1][0])
+                y1 = self.maxpool(xd[n - 1][1])
             else:
-                y = x
-            xd.append(self.down[n](y))
+                y0 = x0
+                y1 = x1
+            xd.append(torch.stack([self.down[n](y0), self.down[n](y1)], dim=0))
         
-        # print("len xd:")
-        # print(len(xd))
         return xd
 
 
@@ -159,6 +190,7 @@ class make_style(nn.Module):
         self.avg_pool = F.avg_pool3d if conv_3D else F.avg_pool2d
 
     def forward(self, x0):
+        x0 = x0[0]
         style = self.avg_pool(x0, kernel_size=x0.shape[2:])
         style = self.flatten(style)
         style = style / torch.sum(style**2, axis=1, keepdim=True)**.5
@@ -175,14 +207,56 @@ class upsample(nn.Module):
             self.up.add_module("res_up_%d" % (n - 1),
                                resup(nbase[n], nbase[n - 1], nbase[-1], sz, conv_3D))
 
+    # # Old forward pass
+    # def forward(self, style, xd, mkldnn=False):
+    #     # this stuff here is all new
+    #     if xd[0].ndim != 4:
+    #         print(len(xd))
+    #         xd_new = []
+    #         for input in xd:
+    #             xd_new.append(input[0])
+    #         xd = xd_new
+    #         print(len(xd))
+
+    #     # original stuff
+    #     x = self.up[-1](xd[-1], xd[-1], style, mkldnn=mkldnn)
+    #     for n in range(len(self.up) - 2, -1, -1):
+    #         if mkldnn:
+    #             x = self.upsampling(x.to_dense()).to_mkldnn()
+    #         else:
+    #             x = self.upsampling(x)
+    #         x = self.up[n](x, xd[n], style, mkldnn=mkldnn)
+    #     # return x
+
+    #     # more new stuff
+    #     print("shape of x coming out of upsample forward: " + str(x.shape))
+
+    # New forward pass
     def forward(self, style, xd, mkldnn=False):
-        x = self.up[-1](xd[-1], xd[-1], style, mkldnn=mkldnn)
+        xd1 = []
+        xd2 = []
+        for input in xd:
+            xd1.append(input[0])
+            xd2.append(input[1])
+
+        x1 = self.up[-1](xd1[-1], xd1[-1], style, mkldnn=mkldnn)
         for n in range(len(self.up) - 2, -1, -1):
             if mkldnn:
-                x = self.upsampling(x.to_dense()).to_mkldnn()
+                x1 = self.upsampling(x1.to_dense()).to_mkldnn()
             else:
-                x = self.upsampling(x)
-            x = self.up[n](x, xd[n], style, mkldnn=mkldnn)
+                x1 = self.upsampling(x1)
+            x1 = self.up[n](x1, xd1[n], style, mkldnn=mkldnn)
+
+        x2 = self.up[-1](xd2[-1], xd2[-1], style, mkldnn=mkldnn)
+        for n in range(len(self.up) - 2, -1, -1):
+            if mkldnn:
+                x2 = self.upsampling(x2.to_dense()).to_mkldnn()
+            else:
+                x2 = self.upsampling(x2)
+            x2 = self.up[n](x2, xd2[n], style, mkldnn=mkldnn)
+
+        x = torch.stack([x1, x2], dim=0)
+        print("shape of x coming out of upsample forward: " + str(x.shape))
         return x
 
 
@@ -267,6 +341,7 @@ class CPnet(nn.Module):
         Returns:
             tuple: A tuple containing the output tensor, style tensor, and downsampled tensors.
         """
+        print("START DATA SHAPE:" + str(data.shape))
         if self.mkldnn:
             data = data.to_mkldnn()
         T0 = self.downsample(data)  # results of the downsample: contains a list of tensors, as the result of each layer
@@ -278,14 +353,23 @@ class CPnet(nn.Module):
         style0 = style
         if not self.style_on:
             style = style * 0
-        T1 = self.upsample(style, T0, self.mkldnn)
-        T1 = self.output(T1)
+
+        # Old stuff
+        # T1 = self.upsample(style, T0, self.mkldnn)
+        # T1 = self.output(T1)
+
+        # new stuff
+        T1_temp = self.upsample(style, T0, self.mkldnn)
+        T1 = torch.stack([self.output(T1_temp[0]), self.output(T1_temp[1])], dim=0)
+        print("T1 shape: " + str(T1.shape))
+
+        # old stuff again
         if self.mkldnn:
             T0 = [t0.to_dense() for t0 in T0]
             T1 = T1.to_dense()
 
         if self.should_write:
-            #print(data.shape)
+            print(f"DATA SHAPE: {data.shape}")
             print(f"T0 len: {len(T0)}")
             print(f"T0[-1] shape: {T0[-1].shape}")
 
@@ -297,15 +381,17 @@ class CPnet(nn.Module):
             # #np.savetxt('/Users/aryagharib/Desktop/erf2.txt', T0[0])
 
             #print(T0[0][0][0])
-            # torch.save(T0[0], "/Users/aryagharib/Desktop/T0_0_img3.pt")
+            #torch.save(T0[3], "/Users/aryagharib/Desktop/T0_heatmap_img3.pt")
             # torch.save(T0[1], "/Users/aryagharib/Desktop/T0_1_img3.pt")
             # torch.save(T0[2], "/Users/aryagharib/Desktop/T0_2_img3.pt")
             # torch.save(T0[3], "/Users/aryagharib/Desktop/T0_3_img3.pt")
 
-            # torch.save(T1[0], "/Users/aryagharib/Desktop/T1_0_img3.pt")
+            #torch.save(T1[3], "/Users/aryagharib/Desktop/T1_heatmap_img1.pt")
             # torch.save(T1[1], "/Users/aryagharib/Desktop/T1_1_img3.pt")
             # torch.save(T1[2], "/Users/aryagharib/Desktop/T1_2_img3.pt")
             # torch.save(T1[3], "/Users/aryagharib/Desktop/T1_3_img3.pt")
+
+            # torch.save(T0[0], "/Users/aryagharib/Desktop/T0_12_ind0.pt")
 
         return T1, style0, T0
 

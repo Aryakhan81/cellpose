@@ -795,6 +795,8 @@ def random_rotate_and_resize(X, Y=None, scale_range=1., xy=(224, 224), do_3D=Fal
             - lbl (ND-array, float): Transformed labels in array [nimg x nchan x xy[0] x xy[1]].
             - scale (array, float): Amount each image was resized by.
     """
+
+    rotate = False
     scale_range = max(0, min(2, float(scale_range)))
     nimg = len(X)
     if X[0].ndim > 2:

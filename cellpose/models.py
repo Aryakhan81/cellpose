@@ -306,11 +306,13 @@ class CellposeModel():
         if backbone=="default":
             self.net = CPnet(self.nbase, self.nclasses, sz=3, mkldnn=self.mkldnn,
                              max_pool=True, diam_mean=diam_mean).to(self.device)
+            print("I AM GROOT")
         else:
             from .segformer import Transformer
             self.net = Transformer(encoder_weights="imagenet" if not self.pretrained_model else None,
                                      diam_mean=diam_mean).to(self.device)
 
+        print(self.pretrained_model)
         ### load model weights
         if self.pretrained_model:
             models_logger.info(f">>>> loading model {pretrained_model}")
@@ -392,8 +394,8 @@ class CellposeModel():
             
         """
         if isinstance(x, list) or x.squeeze().ndim == 5:
-            # print("SHAPE OF X: -----------------")
-            # print(x.shape)
+            print("SHAPE OF X: -----------------")
+            print(x.shape)
             self.timing = []
             masks, styles, flows = [], [], []
             tqdm_out = utils.TqdmToLogger(models_logger, level=logging.INFO)
