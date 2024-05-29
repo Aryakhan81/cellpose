@@ -439,6 +439,18 @@ def train_seg(net, train_data=None, train_labels=None, train_files=None,
 
     train_logger.info(f">>> saving model to {model_path}")
 
+    # get a copy of the subsequent images to each of the image choices
+    train_data_next = train_data[1:]
+    train_data_next.append(train_data[-1])
+    train_labels_next = train_labels[1:]
+    train_labels_next.append(train_labels[-1])
+    train_files_next = train_files[1:]
+    train_files_next.append(train_files[-1])
+    label_files_next = None
+    if(train_labels_files is not None):
+        label_files_next = train_labels_files[1:]
+        label_files_next.append(train_labels_files[-1])
+
     lavg, nsum = 0, 0
     for iepoch in range(n_epochs):
         np.random.seed(iepoch)
@@ -456,14 +468,34 @@ def train_seg(net, train_data=None, train_labels=None, train_files=None,
             imgs, lbls = _get_batch(inds, data=train_data, labels=train_labels,
                                     files=train_files, labels_files=train_labels_files,
                                     **kwargs)
+            # next images + labels
+            imgs2, lbls2 = _get_batch(inds, data=train_data_next, labels=train_labels_next,
+                                    files=train_files_next, labels_files=label_files_next,
+                                    **kwargs)
+            
             diams = np.array([diam_train[i] for i in inds])
             rsc = diams / net.diam_mean.item() if rescale else np.ones(len(diams), "float32")
+
             # augmentations
             imgi, lbl = transforms.random_rotate_and_resize(imgs, Y=lbls, rescale=rsc,
-                                                            scale_range=scale_range, xy=(bsize, bsize))[:2]
+                                                            scale_range=scale_range, xy=(bsize, bsize), rotate=False)[:2]
+            
+            # augmentations to the next images
+            imgi2, lbl2 = transforms.random_rotate_and_resize(imgs2, Y=lbls2, rescale=rsc,
+                                                            scale_range=scale_range, xy=(bsize, bsize), rotate=False)[:2]
 
-            X = torch.from_numpy(imgi).to(device)
-            y = net(X)[0]
+            imgi_concat = np.concatenate([imgi, imgi2], axis=0)
+        
+            # # old lines
+            # X = torch.from_numpy(imgi).to(device)
+            # y = net(X)[0]
+
+            # new lines
+            org_len = len(imgs)
+            X = torch.from_numpy(imgi_concat).to(device)
+            y_temp = net(X)[0]
+            y = y_temp[:org_len, :, :, :]
+
             loss = _loss_fn_seg(lbl, y, device)
             optimizer.zero_grad()
             loss.backward()
