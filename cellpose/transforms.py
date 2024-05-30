@@ -884,3 +884,130 @@ def random_rotate_and_resize(X, Y=None, scale_range=1., xy=(224, 224), do_3D=Fal
                 lbl[n, -1] = (v1 * np.cos(-theta) + v2 * np.sin(-theta))
 
     return imgi, lbl, scale
+
+
+def random_rotate_and_resize_ext(X, X_next, Y=None, scale_range=1., xy=(224, 224), do_3D=False,
+                             do_flip=True, rotate=True, rescale=None, unet=False,
+                             random_per_image=True):
+    """Augmentation by random rotation and resizing.
+
+    Args:
+        X (list of ND-arrays, float): List of image arrays of size [nchan x Ly x Lx] or [Ly x Lx].
+        X_next (list of ND-arrays, float): List of next image arrays of size [nchan x Ly x Lx] or [Ly x Lx].
+        Y (list of ND-arrays, float, optional): List of image labels of size [nlabels x Ly x Lx] or [Ly x Lx].
+            The 1st channel of Y is always nearest-neighbor interpolated (assumed to be masks or 0-1 representation).
+            If Y.shape[0]==3 and not unet, then the labels are assumed to be [cell probability, Y flow, X flow].
+            If unet, second channel is dist_to_bound. Defaults to None.
+        scale_range (float, optional): Range of resizing of images for augmentation.
+            Images are resized by (1-scale_range/2) + scale_range * np.random.rand(). Defaults to 1.0.
+        xy (tuple, int, optional): Size of transformed images to return. Defaults to (224,224).
+        do_flip (bool, optional): Whether or not to flip images horizontally. Defaults to True.
+        rotate (bool, optional): Whether or not to rotate images. Defaults to True.
+        rescale (array, float, optional): How much to resize images by before performing augmentations. Defaults to None.
+        unet (bool, optional): Whether or not to use unet. Defaults to False.
+        random_per_image (bool, optional): Different random rotate and resize per image. Defaults to True.
+
+    Returns:
+        tuple containing
+            - imgi (ND-array, float): Transformed images in array [nimg x nchan x xy[0] x xy[1]].
+            - lbl (ND-array, float): Transformed labels in array [nimg x nchan x xy[0] x xy[1]].
+            - scale (array, float): Amount each image was resized by.
+    """
+    scale_range = max(0, min(2, float(scale_range)))
+    nimg = len(X)
+    if X[0].ndim > 2:
+        nchan = X[0].shape[0]
+    else:
+        nchan = 1
+    if do_3D and X[0].ndim > 3:
+        shape = (X[0].shape[-3], xy[0], xy[1])
+    else:
+        shape = (xy[0], xy[1])
+    imgi = np.zeros((nimg, nchan, *shape), np.float32)
+    imgi2 = np.zeros((nimg, nchan, *shape), np.float32)
+
+    lbl = []
+    if Y is not None:
+        if Y[0].ndim > 2:
+            nt = Y[0].shape[0]
+        else:
+            nt = 1
+        lbl = np.zeros((nimg, nt, *shape), np.float32)
+
+    scale = np.ones(nimg, np.float32)
+
+    for n in range(nimg):
+        Ly, Lx = X[n].shape[-2:]  # size parameters of X, next image should have same dimensions
+
+        if random_per_image or n == 0:
+            # generate random augmentation parameters
+            flip = np.random.rand() > .5
+            theta = np.random.rand() * np.pi * 2 if rotate else 0.
+            scale[n] = (1 - scale_range / 2) + scale_range * np.random.rand()
+            if rescale is not None:
+                scale[n] *= 1. / rescale[n]
+            dxy = np.maximum(0, np.array([Lx * scale[n] - xy[1],
+                                          Ly * scale[n] - xy[0]]))
+            dxy = (np.random.rand(2,) - .5) * dxy
+
+            # create affine transform
+            cc = np.array([Lx / 2, Ly / 2])
+            cc1 = cc - np.array([Lx - xy[1], Ly - xy[0]]) / 2 + dxy
+            pts1 = np.float32([cc, cc + np.array([1, 0]), cc + np.array([0, 1])])
+            pts2 = np.float32([
+                cc1,
+                cc1 + scale[n] * np.array([np.cos(theta), np.sin(theta)]),
+                cc1 + scale[n] *
+                np.array([np.cos(np.pi / 2 + theta),
+                          np.sin(np.pi / 2 + theta)])
+            ])
+            M = cv2.getAffineTransform(pts1, pts2)
+
+        img = X[n].copy()
+        img2 = X_next[n].copy()
+
+        if Y is not None:
+            labels = Y[n].copy()
+            if labels.ndim < 3:
+                labels = labels[np.newaxis, :, :]
+
+        if flip and do_flip:
+            img = img[..., ::-1]
+            img2 = img2[..., ::-1]
+            if Y is not None:
+                labels = labels[..., ::-1]
+                if nt > 1 and not unet:
+                    labels[-1] = -labels[-1]
+
+        for k in range(nchan):
+            if do_3D:
+                for z in range(shape[0]):
+                    I = cv2.warpAffine(img[k, z], M, (xy[1], xy[0]),
+                                       flags=cv2.INTER_LINEAR)
+                    imgi[n, k, z] = I
+                    I2 = cv2.warpAffine(img2[k, z], M, (xy[1], xy[0]),
+                                       flags=cv2.INTER_LINEAR)
+                    imgi2[n, k, z] = I2
+            else:
+                I = cv2.warpAffine(img[k], M, (xy[1], xy[0]), flags=cv2.INTER_LINEAR)
+                imgi[n, k] = I
+                I2 = cv2.warpAffine(img2[k], M, (xy[1], xy[0]), flags=cv2.INTER_LINEAR)
+                imgi2[n, k] = I2
+
+        if Y is not None:
+            for k in range(nt):
+                flag = cv2.INTER_NEAREST if k == 0 else cv2.INTER_LINEAR
+                if do_3D:
+                    for z in range(shape[0]):
+                        lbl[n, k, z] = cv2.warpAffine(labels[k, z], M, (xy[1], xy[0]),
+                                                      flags=flag)
+                else:
+                    lbl[n, k] = cv2.warpAffine(labels[k], M, (xy[1], xy[0]), flags=flag)
+
+            if nt > 1 and not unet:
+                v1 = lbl[n, -1].copy()
+                v2 = lbl[n, -2].copy()
+                lbl[n, -2] = (-v1 * np.sin(-theta) + v2 * np.cos(-theta))
+                lbl[n, -1] = (v1 * np.cos(-theta) + v2 * np.sin(-theta))
+
+    return imgi, imgi2, lbl, scale

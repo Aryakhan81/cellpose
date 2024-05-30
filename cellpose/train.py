@@ -465,10 +465,11 @@ def train_seg(net, train_data=None, train_labels=None, train_files=None,
         for k in range(0, nimg_per_epoch, batch_size):
             kend = min(k + batch_size, nimg)
             inds = rperm[k:kend]
+
             imgs, lbls = _get_batch(inds, data=train_data, labels=train_labels,
                                     files=train_files, labels_files=train_labels_files,
                                     **kwargs)
-            # next images + labels
+            # next images only
             imgs2, lbls2 = _get_batch(inds, data=train_data_next, labels=train_labels_next,
                                     files=train_files_next, labels_files=label_files_next,
                                     **kwargs)
@@ -476,13 +477,18 @@ def train_seg(net, train_data=None, train_labels=None, train_files=None,
             diams = np.array([diam_train[i] for i in inds])
             rsc = diams / net.diam_mean.item() if rescale else np.ones(len(diams), "float32")
 
-            # augmentations
-            imgi, lbl = transforms.random_rotate_and_resize(imgs, Y=lbls, rescale=rsc,
-                                                            scale_range=scale_range, xy=(bsize, bsize), rotate=False)[:2]
+            # OLD CODE:
+            # # augmentations
+            # imgi, lbl, _ = transforms.random_rotate_and_resize(imgs, Y=lbls, rescale=rsc,
+            #                                                 scale_range=scale_range, xy=(bsize, bsize), rotate=False)
             
-            # augmentations to the next images
-            imgi2, lbl2 = transforms.random_rotate_and_resize(imgs2, Y=lbls2, rescale=rsc,
-                                                            scale_range=scale_range, xy=(bsize, bsize), rotate=False)[:2]
+            # # augmentations to the next images
+            # imgi2, lbl2, _ = transforms.random_rotate_and_resize(imgs2, Y=lbls2, rescale=rsc,
+            #                                                 scale_range=scale_range, xy=(bsize, bsize), rotate=False)
+            
+            # combined augmentations
+            imgi, imgi2, lbl, _ = transforms.random_rotate_and_resize_ext(imgs, imgs2, Y=lbls, rescale=rsc,
+                                                            scale_range=scale_range, xy=(bsize, bsize))
 
             imgi_concat = np.concatenate([imgi, imgi2], axis=0)
         
