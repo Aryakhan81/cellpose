@@ -81,49 +81,35 @@ class downsample(nn.Module):  # class comibining many downsample units
         # define a variable telling us if we have the full count
         self.num_images = 0
 
-    # def forward(self, x):
-    #     xd = []
-    #     # print("length of slef.down")
-    #     # print(len(self.down))
-    #     # print(f"shape of x: {x.shape}")
-
-    #     # see how big we are
-    #     self.num_images = max(self.num_images, x.shape[0])
-
-    #     # only perform mixing steps when the full set is present
-    #     if self.num_images == x.shape[0]: 
-    #         split = int(x.shape[0] / 2)
-    #         # print(f"split: {str(split)}")
-
-    #         x_1 = x[:split, :, :, :]
-    #         x_2 = x[split:, :, :, :]
-
-    #         # # average curr and next frames
-    #         # x = torch.add(x_1, x_2)
-    #         # x.div_(2)
-
-    #         # # find the max of curr and next frames
-    #         # x = torch.max(x_1, x_2)
-
-    #         # find the min of curr and next frames
-    #         x = torch.min(x_1, x_2)
-
-    #         # # multiply the two tensors
-    #         # x = torch.mul(x_1, x_2)
-
-    #     for n in range(len(self.down)):
-    #         if n > 0:
-    #             y = self.maxpool(xd[n - 1])
-    #         else:
-    #             y = x
-    #         xd.append(self.down[n](y))
-        
-    #     # print("len xd:")
-    #     # print(len(xd))
-    #     return xd
-    
     def forward(self, x):
         xd = []
+        # print("length of slef.down")
+        # print(len(self.down))
+        # print(f"shape of x: {x.shape}")
+
+        # see how big we are
+        self.num_images = max(self.num_images, x.shape[0])
+
+        # only perform mixing steps when the full set is present
+        if self.num_images == x.shape[0]: 
+            split = int(x.shape[0] / 2)
+            # print(f"split: {str(split)}")
+
+            x_1 = x[:split, :, :, :]
+            x_2 = x[split:, :, :, :]
+
+            # average curr and next frames
+            x = torch.add(x_1, x_2)
+            x.div_(2)
+
+            # # find the max of curr and next frames
+            # x = torch.max(x_1, x_2)
+
+            # # find the min of curr and next frames
+            # x = torch.min(x_1, x_2)
+
+            # # multiply the two tensors
+            # x = torch.mul(x_1, x_2)
 
         for n in range(len(self.down)):
             if n > 0:
@@ -131,9 +117,23 @@ class downsample(nn.Module):  # class comibining many downsample units
             else:
                 y = x
             xd.append(self.down[n](y))
-
-        xd[-1] = self.min_mix(xd[-1])  # this line is the combination function
+        
+        # print("len xd:")
+        # print(len(xd))
         return xd
+    
+    # def forward(self, x):
+    #     xd = []
+
+    #     for n in range(len(self.down)):
+    #         if n > 0:
+    #             y = self.maxpool(xd[n - 1])
+    #         else:
+    #             y = x
+    #         xd.append(self.down[n](y))
+
+    #     xd[-1] = self.avg_mix(xd[-1])  # this line is the combination function
+    #     return xd
      
     def avg_mix(self, x):
         self.num_images = max(self.num_images, x.shape[0])

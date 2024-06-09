@@ -254,6 +254,14 @@ def main():
                 images, labels, image_names, test_images, test_labels, image_names_test = output
                 load_files = True
 
+                # get next images from filepath 
+                if(args.next_dir):
+                    next_images, next_image_names = io.get_image_files_as_data(args.next_dir, "_masks")
+                    # print(f"images: {images}")
+                    # print(f"next images: {next_images}")
+                else:
+                    raise AttributeError("For this we need next dirs too, lemme cook")
+
             # training with all channels
             if args.all_channels:
                 img = images[0] if images is not None else io.imread(image_names[0])
@@ -301,7 +309,11 @@ def main():
                     nimg_per_epoch=args.nimg_per_epoch, 
                     nimg_test_per_epoch=args.nimg_test_per_epoch,
                     save_path=os.path.realpath(args.dir), save_every=args.save_every,
-                    model_name=args.model_name_out)
+                    model_name=args.model_name_out,
+                    
+                    next_images=next_images, next_images_files=next_image_names
+                    
+                    )
                 model.pretrained_model = cpmodel_path
                 logger.info(">>>> model trained and saved to %s" % cpmodel_path)
 

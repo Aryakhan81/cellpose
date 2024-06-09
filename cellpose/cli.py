@@ -37,6 +37,8 @@ def get_arg_parser():
     input_img_args = parser.add_argument_group("Input Image Arguments")
     input_img_args.add_argument("--dir", default=[], type=str,
                                 help="folder containing data to run or train on.")
+    input_img_args.add_argument("--next_dir", default=[], type=str,
+                                help="folder containing next image frames after the training ones.")
     input_img_args.add_argument(
         "--image_path", default=[], type=str, help=
         "if given and --dir not given, run on single image instead of folder (cannot train with this option)"

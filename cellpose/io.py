@@ -337,6 +337,82 @@ def get_image_files(folder, mask_filter, imf=None, look_one_level_down=False):
 
     return image_names
 
+def get_image_files_as_data(folder, mask_filter, imf=None, look_one_level_down=False):
+    """
+    Finds all images in a folder and its subfolders (if specified) with the given file extensions. Gets both
+    data as well as image names
+
+    Args:
+        folder (str): The path to the folder to search for images.
+        mask_filter (str): The filter for mask files.
+        imf (str, optional): The additional filter for image files. Defaults to None.
+        look_one_level_down (bool, optional): Whether to search for images in subfolders. Defaults to False.
+
+    Returns:
+        image_data: The data each image contains.
+        image_names: A list of image file paths.
+
+    Raises:
+        ValueError: If no files are found in the specified folder.
+        ValueError: If no images are found in the specified folder with the supported file extensions.
+        ValueError: If no images are found in the specified folder without the mask or flow file endings.
+    """
+    mask_filters = ["_cp_masks", "_cp_output", "_flows", "_masks", mask_filter]
+    image_names = []
+    if imf is None:
+        imf = ""
+
+    folders = []
+    if look_one_level_down:
+        folders = natsorted(glob.glob(os.path.join(folder, "*/")))
+    folders.append(folder)
+    exts = [".png", ".jpg", ".jpeg", ".tif", ".tiff", ".dax", ".nd2", ".nrrd"]
+    l0 = 0
+    al = 0
+    for folder in folders:
+        all_files = glob.glob(folder + "/*")
+        al += len(all_files)
+        for ext in exts:
+            image_names.extend(glob.glob(folder + f"/*{imf}{ext}"))
+            image_names.extend(glob.glob(folder + f"/*{imf}{ext.upper()}"))
+        l0 += len(image_names)
+
+    # return error if no files found
+    if al == 0:
+        raise ValueError("ERROR: no files in --dir folder ")
+    elif l0 == 0:
+        raise ValueError(
+            "ERROR: no images in --dir folder with extensions .png, .jpg, .jpeg, .tif, .tiff"
+        )
+
+    image_names = natsorted(image_names)
+    imn = []
+    for im in image_names:
+        imfile = os.path.splitext(im)[0]
+        igood = all([(len(imfile) > len(mask_filter) and
+                      imfile[-len(mask_filter):] != mask_filter) or
+                     len(imfile) <= len(mask_filter) for mask_filter in mask_filters])
+        if len(imf) > 0:
+            igood &= imfile[-len(imf):] == imf
+        if igood:
+            imn.append(im)
+
+    image_names = imn
+
+    # remove duplicates
+    image_names = [*set(image_names)]
+    image_names = natsorted(image_names)
+
+    if len(image_names) == 0:
+        raise ValueError(
+            "ERROR: no images in --dir folder without _masks or _flows ending")
+    
+    image_data = []
+    for img in image_names:
+        image_data.append(imread(img))
+
+    return image_data, image_names
+
 
 def get_label_files(image_names, mask_filter, imf=None):
     """

@@ -328,7 +328,11 @@ def train_seg(net, train_data=None, train_labels=None, train_files=None,
               compute_flows=False, save_path=None,
               save_every=100, nimg_per_epoch=None, nimg_test_per_epoch=None,
               rescale=True, scale_range=None, bsize=224,
-              min_train_masks=5, model_name=None):
+              min_train_masks=5, model_name=None,
+              
+              next_images=None, next_images_files=None
+
+              ):
     """
     Train the network with images for segmentation.
 
@@ -379,6 +383,7 @@ def train_seg(net, train_data=None, train_labels=None, train_files=None,
         normalize_params = models.normalize_default
         normalize_params["normalize"] = normalize
 
+    #print(f"images before: {train_data}")
     out = _process_train_test(
         train_data=train_data, train_labels=train_labels, train_files=train_files,
         train_probs=train_probs,
@@ -389,6 +394,12 @@ def train_seg(net, train_data=None, train_labels=None, train_files=None,
         rgb=rgb, normalize_params=normalize_params, device=net.device)
     (train_data, train_labels, train_files, train_labels_files, train_probs, diam_train,
      test_data, test_labels, test_files, test_labels_files, test_probs, diam_test, normed) = out
+    #print(f"images after: {train_data}")
+
+    next_images = _reshape_norm(next_images, channels=channels,
+                channel_axis=channel_axis, rgb=rgb,
+                normalize_params=normalize_params)
+    #print(f"next images now: {next_images}")
     # already normalized, do not normalize during training
     if normed:
         kwargs = {}
@@ -440,16 +451,18 @@ def train_seg(net, train_data=None, train_labels=None, train_files=None,
     train_logger.info(f">>> saving model to {model_path}")
 
     # get a copy of the subsequent images to each of the image choices
-    train_data_next = train_data[1:]
-    train_data_next.append(train_data[-1])
-    train_labels_next = train_labels[1:]
-    train_labels_next.append(train_labels[-1])
-    train_files_next = train_files[1:]
-    train_files_next.append(train_files[-1])
-    label_files_next = None
-    if(train_labels_files is not None):
-        label_files_next = train_labels_files[1:]
-        label_files_next.append(train_labels_files[-1])
+    # train_data_next = train_data[1:]
+    # train_data_next.append(train_data[-1])
+    # train_labels_next = train_labels[1:]
+    # train_labels_next.append(train_labels[-1])
+    # train_files_next = train_files[1:]
+    # train_files_next.append(train_files[-1])
+    # label_files_next = None
+    # if(train_labels_files is not None):
+    #     label_files_next = train_labels_files[1:]
+    #     label_files_next.append(train_labels_files[-1])
+    train_data_next = next_images
+    train_files_next = next_images_files
 
     lavg, nsum = 0, 0
     for iepoch in range(n_epochs):
@@ -470,8 +483,8 @@ def train_seg(net, train_data=None, train_labels=None, train_files=None,
                                     files=train_files, labels_files=train_labels_files,
                                     **kwargs)
             # next images only
-            imgs2, lbls2 = _get_batch(inds, data=train_data_next, labels=train_labels_next,
-                                    files=train_files_next, labels_files=label_files_next,
+            imgs2, lbls2 = _get_batch(inds, data=train_data_next, labels=train_labels,
+                                    files=train_files_next, labels_files=train_labels_files,
                                     **kwargs)
             
             diams = np.array([diam_train[i] for i in inds])
